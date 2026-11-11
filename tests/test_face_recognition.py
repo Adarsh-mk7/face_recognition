@@ -159,6 +159,77 @@ class Test_face_recognition(unittest.TestCase):
         self.assertEqual(len(encodings), 1)
         self.assertEqual(len(encodings[0]), 128)
 
+    def test_face_encodings_non_contiguous_arrays(self):
+        img = api.load_image_file(os.path.join(os.path.dirname(__file__), 'test_images', 'obama.jpg'))
+        known_locations = api.face_locations(img)
+        expected_encoding = api.face_encodings(img, known_face_locations=known_locations)[0]
+
+        # Negative channel stride view (e.g. OpenCV BGR -> RGB slicing frame[:, :, ::-1])
+        bgr = img[:, :, ::-1].copy()
+        rgb_view = bgr[:, :, ::-1]
+        self.assertFalse(rgb_view.flags['C_CONTIGUOUS'])
+        encodings = api.face_encodings(rgb_view, known_face_locations=known_locations)
+        self.assertEqual(len(encodings), 1)
+        np.testing.assert_allclose(encodings[0], expected_encoding)
+        np.testing.assert_allclose(api.face_encodings(rgb_view)[0], expected_encoding)
+
+        # Non-contiguous cropped slice view
+        cropped = img[50:600, 200:750, :]
+        self.assertFalse(cropped.flags['C_CONTIGUOUS'])
+        cropped_encodings = api.face_encodings(cropped)
+        self.assertEqual(len(cropped_encodings), 1)
+        self.assertEqual(len(cropped_encodings[0]), 128)
+
+        # Fortran-contiguous array
+        f_order = np.asfortranarray(img)
+        self.assertFalse(f_order.flags['C_CONTIGUOUS'])
+        f_encodings = api.face_encodings(f_order, known_face_locations=known_locations)
+        self.assertEqual(len(f_encodings), 1)
+        np.testing.assert_allclose(f_encodings[0], expected_encoding)
+
+    def test_face_locations_non_contiguous_arrays(self):
+        img = api.load_image_file(os.path.join(os.path.dirname(__file__), 'test_images', 'obama.jpg'))
+
+        bgr = img[:, :, ::-1].copy()
+        rgb_view = bgr[:, :, ::-1]
+        self.assertEqual(api.face_locations(rgb_view), [(142, 617, 409, 349)])
+
+        f_order = np.asfortranarray(img)
+        self.assertEqual(api.face_locations(f_order), [(142, 617, 409, 349)])
+
+        flipped_h = img[:, ::-1, :]
+        self.assertFalse(flipped_h.flags['C_CONTIGUOUS'])
+        self.assertEqual(len(api.face_locations(flipped_h)), 1)
+
+        cropped = img[50:600, 200:750, :]
+        self.assertEqual(len(api.face_locations(cropped)), 1)
+
+        gray_view = img[:, :, 0]
+        self.assertFalse(gray_view.flags['C_CONTIGUOUS'])
+        self.assertEqual(api.face_locations(gray_view), [(142, 617, 409, 349)])
+
+    def test_face_landmarks_non_contiguous_arrays(self):
+        img = api.load_image_file(os.path.join(os.path.dirname(__file__), 'test_images', 'obama.jpg'))
+        known_locations = api.face_locations(img)
+        expected_landmarks = api.face_landmarks(img, face_locations=known_locations)
+
+        bgr = img[:, :, ::-1].copy()
+        rgb_view = bgr[:, :, ::-1]
+        self.assertEqual(api.face_landmarks(rgb_view), expected_landmarks)
+        self.assertEqual(api.face_landmarks(rgb_view, face_locations=known_locations), expected_landmarks)
+        self.assertEqual(api.face_landmarks(np.asfortranarray(img)), expected_landmarks)
+
+    def test_batched_face_locations_non_contiguous_arrays(self):
+        img = api.load_image_file(os.path.join(os.path.dirname(__file__), 'test_images', 'obama.jpg'))
+        cropped = img[50:550, 250:750, :]
+        bgr_crop = cropped[:, :, ::-1].copy()
+        rgb_crop_view = bgr_crop[:, :, ::-1]
+        self.assertFalse(rgb_crop_view.flags['C_CONTIGUOUS'])
+
+        batched_detected_faces = api.batch_face_locations([rgb_crop_view], number_of_times_to_upsample=0)
+        self.assertEqual(len(batched_detected_faces), 1)
+        self.assertEqual(len(batched_detected_faces[0]), 1)
+
     def test_face_distance(self):
         img_a1 = api.load_image_file(os.path.join(os.path.dirname(__file__), 'test_images', 'obama.jpg'))
         img_a2 = api.load_image_file(os.path.join(os.path.dirname(__file__), 'test_images', 'obama2.jpg'))

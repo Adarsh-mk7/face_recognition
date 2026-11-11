@@ -60,6 +60,18 @@ def _trim_css_to_bounds(css, image_shape):
     return max(css[0], 0), min(css[1], image_shape[1]), min(css[2], image_shape[0]), max(css[3], 0)
 
 
+def _ensure_contiguous(img):
+    """
+    Ensure a numpy image array is C-contiguous before passing it to dlib.
+
+    :param img: An image (as a numpy array)
+    :return: A C-contiguous numpy array with the same shape, dtype, and pixel values
+    """
+    if isinstance(img, np.ndarray) and not img.flags["C_CONTIGUOUS"]:
+        return np.ascontiguousarray(img)
+    return img
+
+
 def face_distance(face_encodings, face_to_compare):
     """
     Given a list of face encodings, compare them to a known face encoding and get a euclidean distance
@@ -99,6 +111,7 @@ def _raw_face_locations(img, number_of_times_to_upsample=1, model="hog"):
                   deep-learning model which is GPU/CUDA accelerated (if available). The default is "hog".
     :return: A list of dlib 'rect' objects of found face locations
     """
+    img = _ensure_contiguous(img)
     if model == "cnn":
         return cnn_face_detector(img, number_of_times_to_upsample)
     else:
@@ -129,6 +142,7 @@ def _raw_face_locations_batched(images, number_of_times_to_upsample=1, batch_siz
     :param number_of_times_to_upsample: How many times to upsample the image looking for faces. Higher numbers find smaller faces.
     :return: A list of dlib 'rect' objects of found face locations
     """
+    images = [_ensure_contiguous(image) for image in images]
     return cnn_face_detector(images, number_of_times_to_upsample, batch_size=batch_size)
 
 
@@ -152,6 +166,7 @@ def batch_face_locations(images, number_of_times_to_upsample=1, batch_size=128):
 
 
 def _raw_face_landmarks(face_image, face_locations=None, model="large"):
+    face_image = _ensure_contiguous(face_image)
     if face_locations is None:
         face_locations = _raw_face_locations(face_image)
     else:
@@ -210,6 +225,7 @@ def face_encodings(face_image, known_face_locations=None, num_jitters=1, model="
     :param model: Optional - which model to use. "large" or "small" (default) which only returns 5 points but is faster.
     :return: A list of 128-dimensional face encodings (one for each face in the image)
     """
+    face_image = _ensure_contiguous(face_image)
     raw_landmarks = _raw_face_landmarks(face_image, known_face_locations, model)
     return [np.array(face_encoder.compute_face_descriptor(face_image, raw_landmark_set, num_jitters)) for raw_landmark_set in raw_landmarks]
 
